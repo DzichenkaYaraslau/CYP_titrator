@@ -7,16 +7,18 @@ Created on Tue Nov 27 11:01:40 2018
 """
 
 import numpy as np
+
+from lmfit import Model
 import math
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.optimize import curve_fit
+#from scipy.optimize import curve_fit
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
 
 def TightBinding(C, Amax, E, Kd):
     return Amax * (C + E + Kd - np.sqrt(np.power(C + E + Kd, 2) - 4 * E * C))/(2 * E)
 
-fileName = 'CYP21_M3.csv'
+fileName = 'CYP7A1_LjG16-8M.csv'
 fIn = open(fileName, 'r')
 lines = fIn.readlines()
 fIn.close()
@@ -35,7 +37,7 @@ for i in wl_range:
 
 df = pd.DataFrame(data, index=wl_range, columns=vol_range)
 finC = df[vol_range[-1]]
-#print(finC)
+
 maxind = lmin + max(range(len(finC)), key = lambda x: finC[x + lmin+1])
 minind = lmin + min(range(len(finC)), key = lambda x: finC[x + lmin+1])
 DA = np.zeros(len(vol_range))
@@ -52,17 +54,20 @@ for i in range(1, len(vol_range)):
         Vsum = vol_range[i]
     conc[i] = 100/(2000+Vsum)*vol_range[i]
 
-popt, pcov = curve_fit(TightBinding, conc, DA, (max(DA), 1., 40), bounds = ((0, 0.99, 0), (np.inf, 1, np.inf)))   
-Amax, E, Kd = popt
-
-print('Amax={0}\nE={1}\nKd={2}'.format(*tuple(popt)), float(np.sqrt(np.diag(pcov))[2]))
+gmodel = Model(TightBinding)
+result = gmodel.fit(DA, C=conc, Amax=max(DA), E=1, Kd=3)
+print(result.fit_report())
+#popt, pcov = curve_fit(TightBinding, conc, DA, (max(DA), 1., 40), bounds = ((0, 0.99, 0), (np.inf, 1, np.inf)))   
+#Amax, E, Kd = popt
+#
+#print('Amax={0}\nE={1}\nKd={2}'.format(*tuple(popt)), float(np.sqrt(np.diag(pcov))[2]))
 fig, ax1 = plt.subplots()
 fig.tight_layout()
 ax1.plot(conc, DA, 'ro', conc, TightBinding(conc, *popt))
 ax1.set_title(fileName[:-4])
 ax1.set_xlabel('[L], uM')
 ax1.set_ylabel(r'$\Delta$A')
-#ax1.text('left top')
+
 
 ax1_inset = inset_axes(ax1, width="40%", height="40%", loc=4, borderpad=3.5)
 ax1_inset.plot(df)
@@ -71,4 +76,4 @@ ax1_inset.set_xlabel(r'$\lambda$, nm')
 ax1_inset.set_ylabel('A')
 plt.tight_layout()
 
-fig.savefig(fileName[:-4]+".png")
+#fig.savefig(fileName[:-4]+".png")
