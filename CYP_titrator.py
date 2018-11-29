@@ -8,14 +8,17 @@ Created on Tue Nov 27 11:01:40 2018
 
 import numpy as np
 
-from lmfit import Model
+from lmfit import Minimizer, Parameters, Parameter, report_fit
 import math
 import pandas as pd
 import matplotlib.pyplot as plt
 #from scipy.optimize import curve_fit
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
 
-def TightBinding(C, Amax, E, Kd):
+def TightBinding(params, C):
+    Amax = params['Amax']
+    E = params['E']
+    Kd = params['Kd']
     return Amax * (C + E + Kd - np.sqrt(np.power(C + E + Kd, 2) - 4 * E * C))/(2 * E)
 
 fileName = 'CYP7A1_LjG16-8M.csv'
@@ -44,7 +47,7 @@ DA = np.zeros(len(vol_range))
 for i, item in enumerate(df):
     DA[i] = df[item][maxind]-df[item][minind]
 Vsum =0
-conc = np.zeros(len(vol_range))
+C = np.zeros(len(vol_range))
 for i in range(1, len(vol_range)):
     if (vol_range[i]-vol_range[i-1] > 10) and (vol_range[i]-vol_range[i-1] < 100):
         Vsum += (vol_range[i]-vol_range[i-1])/10
@@ -52,28 +55,39 @@ for i in range(1, len(vol_range)):
         Vsum += (vol_range[i]-vol_range[i-1])/100
     else:
         Vsum = vol_range[i]
-    conc[i] = 100/(2000+Vsum)*vol_range[i]
+    C[i] = 100/(2000+Vsum)*vol_range[i]
 
-gmodel = Model(TightBinding)
-result = gmodel.fit(DA, C=conc, Amax=max(DA), E=1, Kd=3)
-print(result.fit_report())
+params = Parameters()
+params['Amax'] = Parameter(name='Amax', value=0.048 )#max(DA))
+params['E'] = Parameter(name='E', value=1.0)
+params['Kd'] = Parameter(name='Kd', value=4.0)
+
+minner = Minimizer(TightBinding, params, fcn_kws = {'C': C})
+result = minner.leastsq()
+print(result.params)
+plt.plot(C, DA, 'ro')
+plt.plot(C, TightBinding(result.params, C) + DA, 'b')
+plt.show()
+#gmodel = Model(TightBinding)
+#result = gmodel.fit(DA, C=conc, Amax=max(DA), E=1, Kd=3)
+#print(result.fit_report())
 #popt, pcov = curve_fit(TightBinding, conc, DA, (max(DA), 1., 40), bounds = ((0, 0.99, 0), (np.inf, 1, np.inf)))   
 #Amax, E, Kd = popt
 #
 #print('Amax={0}\nE={1}\nKd={2}'.format(*tuple(popt)), float(np.sqrt(np.diag(pcov))[2]))
-fig, ax1 = plt.subplots()
-fig.tight_layout()
-ax1.plot(conc, DA, 'ro', conc, TightBinding(conc, *popt))
-ax1.set_title(fileName[:-4])
-ax1.set_xlabel('[L], uM')
-ax1.set_ylabel(r'$\Delta$A')
-
-
-ax1_inset = inset_axes(ax1, width="40%", height="40%", loc=4, borderpad=3.5)
-ax1_inset.plot(df)
-ax1_inset.set_xlim((lmin, lmax))
-ax1_inset.set_xlabel(r'$\lambda$, nm')
-ax1_inset.set_ylabel('A')
-plt.tight_layout()
+#fig, ax1 = plt.subplots()
+#fig.tight_layout()
+#ax1.plot(conc, DA, 'ro', conc, TightBinding(conc, *popt))
+#ax1.set_title(fileName[:-4])
+#ax1.set_xlabel('[L], uM')
+#ax1.set_ylabel(r'$\Delta$A')
+#
+#
+#ax1_inset = inset_axes(ax1, width="40%", height="40%", loc=4, borderpad=3.5)
+#ax1_inset.plot(df)
+#ax1_inset.set_xlim((lmin, lmax))
+#ax1_inset.set_xlabel(r'$\lambda$, nm')
+#ax1_inset.set_ylabel('A')
+#plt.tight_layout()
 
 #fig.savefig(fileName[:-4]+".png")
