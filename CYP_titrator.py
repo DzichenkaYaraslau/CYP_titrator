@@ -7,27 +7,42 @@ Created on Tue Nov 27 11:01:40 2018
 """
 
 import numpy as np
-
-from lmfit import Minimizer, Parameters, Parameter, report_fit
-import math
+from lmfit import minimize, Parameters, Parameter, fit_report
 import pandas as pd
+import sys
 import matplotlib.pyplot as plt
-#from scipy.optimize import curve_fit
 from mpl_toolkits.axes_grid.inset_locator import inset_axes
+import argparse
 
-def TightBinding(params, C):
-    Amax = params['Amax']
-    E = params['E']
-    Kd = params['Kd']
-    return Amax * (C + E + Kd - np.sqrt(np.power(C + E + Kd, 2) - 4 * E * C))/(2 * E)
+def getParameters():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-f', '--filename', default=None)
+    parser.add_argument('-b', '--lmin', default=349)
+    parser.add_argument('-r', '--lmax', default=500) 
+    parser.add_argument('-s', '--step', default=1)     
+    parser.add_argument('-E', '--enzyme', default=1) 
+    parser.add_argument('-e', '--e_vary', default=False) 
+    parser.add_argument('-a', '--amax_vary', default=True) 
+    parser.add_argument('-k', '--kd_vary', default=True) 
+    return parser
 
-fileName = 'CYP7A1_LjG16-8M.csv'
+def TightBinding(params, C, DA):
+    Amax = params['Amax'].value
+    E = params['E'].value
+    Kd = params['Kd'].value
+    model = Amax * (C + E + Kd - np.sqrt((C + E + Kd)**2 - 4 * E * C))/(2 * E)
+    return model-DA
+
+parser = getParameters()
+namespace = parser.parse_args(sys.argv[1:])
+#print(namespace)
+fileName = namespace.filename#'CYP7A1_LjG16-8M.csv'
 fIn = open(fileName, 'r')
 lines = fIn.readlines()
 fIn.close()
-lmin = 349
-lmax = 500
-step = 1
+lmin = namespace.lmin
+lmax = namespace.lmax
+step = namespace.step
 wl_range = range(lmax, lmin, -step)
 vol_range = [float(i) for i in lines[0].strip('\n').split(',,')[:-1]]
 y = len(lines[0].strip('\n').split(',,'))-1
@@ -58,36 +73,27 @@ for i in range(1, len(vol_range)):
     C[i] = 100/(2000+Vsum)*vol_range[i]
 
 params = Parameters()
-params['Amax'] = Parameter(name='Amax', value=0.048 )#max(DA))
-params['E'] = Parameter(name='E', value=1.0)
-params['Kd'] = Parameter(name='Kd', value=4.0)
+params['Amax'] = Parameter(name='Amax', value=max(DA), vary = namespace.amax_vary)
+params['E'] = Parameter(name='E', value=namespace.enzyme, vary = namespace.e_vary)
+params['Kd'] = Parameter(name='Kd', value=1, vary = namespace.kd_vary)
+params.update_constraints()
+result = minimize(TightBinding, params, args=(C,DA))
+final = DA + result.residual
+print(fit_report(result.params))
+fig, ax1 = plt.subplots()
+fig.tight_layout()
+ax1.plot(C, DA, 'ro')
+ax1.plot(C, final, 'b')
+ax1.text(0.0, 1.0, fit_report(result.params), fontsize=8, ha='left', va='top', transform=ax1.transAxes)
+ax1.set_title(fileName[:-4])
+ax1.set_xlabel('[L], uM')
+ax1.set_ylabel(r'$\Delta$A')
 
-minner = Minimizer(TightBinding, params, fcn_kws = {'C': C})
-result = minner.leastsq()
-print(result.params)
-plt.plot(C, DA, 'ro')
-plt.plot(C, TightBinding(result.params, C) + DA, 'b')
-plt.show()
-#gmodel = Model(TightBinding)
-#result = gmodel.fit(DA, C=conc, Amax=max(DA), E=1, Kd=3)
-#print(result.fit_report())
-#popt, pcov = curve_fit(TightBinding, conc, DA, (max(DA), 1., 40), bounds = ((0, 0.99, 0), (np.inf, 1, np.inf)))   
-#Amax, E, Kd = popt
-#
-#print('Amax={0}\nE={1}\nKd={2}'.format(*tuple(popt)), float(np.sqrt(np.diag(pcov))[2]))
-#fig, ax1 = plt.subplots()
-#fig.tight_layout()
-#ax1.plot(conc, DA, 'ro', conc, TightBinding(conc, *popt))
-#ax1.set_title(fileName[:-4])
-#ax1.set_xlabel('[L], uM')
-#ax1.set_ylabel(r'$\Delta$A')
-#
-#
-#ax1_inset = inset_axes(ax1, width="40%", height="40%", loc=4, borderpad=3.5)
-#ax1_inset.plot(df)
-#ax1_inset.set_xlim((lmin, lmax))
-#ax1_inset.set_xlabel(r'$\lambda$, nm')
-#ax1_inset.set_ylabel('A')
-#plt.tight_layout()
+ax1_inset = inset_axes(ax1, width="40%", height="40%", loc=4, borderpad=3.5)
+ax1_inset.plot(df)
+ax1_inset.set_xlim((lmin, lmax))
+ax1_inset.set_xlabel(r'$\lambda$, nm')
+ax1_inset.set_ylabel('A')
+plt.tight_layout()
 
-#fig.savefig(fileName[:-4]+".png")
+fig.savefig(fileName[:-4]+".png")
